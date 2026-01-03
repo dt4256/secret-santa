@@ -2,6 +2,8 @@ import asyncio
 import json
 import os
 import time
+import uuid
+from pathlib import Path
 from aiogram.types import ReplyKeyboardRemove
 from aiogram import Bot, Dispatcher, Router, F, types
 from aiogram.client.default import DefaultBotProperties
@@ -75,11 +77,6 @@ async def global_from_tg(message: Message, state: FSMContext):
 
     await message.answer("Enter global message")
     await state.set_state(GlobalInfoState.waiting_for_text)
-
-
-
-
-
 
 @router.message(GlobalInfoState.waiting_for_text)
 async def receive_global_text(message: Message, state: FSMContext, bot):
@@ -160,7 +157,7 @@ async def profile_settings_menu(message: Message):
 
 @router.callback_query(F.data=="change_class")
 async def edit_class_start(callback: CallbackQuery,state: FSMContext):
-    await callback.message.edit_text(f"Введите свой класс в формате\nКЛАСС.ПАРАЛЛЕЛЬ.\n Например 9.3")
+    await callback.message.edit_text(f"Введите свой класс в формате\nКЛАСС.ПАРАЛЛЕЛЬ.\nНапример 9.3")
     await state.set_state(NameSettingsStates.waiting_for_class)
 
 @router.callback_query(F.data == "edit_name")
@@ -253,6 +250,23 @@ async def save_class(message: Message, state: FSMContext):
 async def close_profile_menu(callback: CallbackQuery):
     await callback.message.delete()
     await callback.answer()
+
+def get_id():
+    return uuid.uuid4().hex  
+
+@router.message(Command("new_game"))
+async def new_game(message:Message):
+    user_id=message.from_user.id
+    temp=get_id()
+    while(os.path.exists(f"game_data/{temp}")):
+        temp=get_id()
+    os.makedirs(f"game_data/{temp}")
+    with open(f"game_data/{temp}/gamers","w",encoding="utf-8") as f:
+        json.dump([user_id],f)
+    with open(f"game_data/{temp}/admin","w",encoding="utf-8") as f:   
+        json.dump([user_id],f)
+    await message.answer(f"Вами была создана новая игра. Ее id:\n<b>{temp}</b>\nИспользуйте данный id чтобы пригласить в игру друзей",parse_mode="HTML")
+
 
 
 async def main():
