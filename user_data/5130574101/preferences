@@ -1,7 +1,8 @@
 {
   "permittions": "user",
-  "Name": "Oleg",
-  "Second_name": "Bebrovich",
-  "class": 9,
-  "numclass": 3
+  "Name": "Олег",
+  "Second_name": "Бебрович",
+  "class": 10,
+  "numclass": 3,
+  "select_game": "62adb641c4374e34a37f63862c994ace"
 }

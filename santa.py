@@ -37,13 +37,14 @@ def add_user(user_id):
             os.mkdir(f"user_data/{user_id}")
             with open(f"user_data/{user_id}/preferences","w",encoding="utf-8") as f:
                 #ТУТ ДОРАБАТЫВАТЬ ПРЕДПОЧТЕНИЯ ПРИ ИНИЦИАЛИЗАЦИИ
-                tmp_preference={"permittions":"user","Name":"no_data","Second_name":"no_data","class":"0","numclass":"0"}
+                tmp_preference={"permittions":"user","Name":"no_data","Second_name":"no_data","class":"0","numclass":"0","select_game":""}
                 json.dump(tmp_preference,f,ensure_ascii=False,indent=2)
-
+            with open(f"user_data/{user_id}/santas","w",encoding="utf-8") as f:
+                json.dump([],f, ensure_ascii=False, indent=2)
             with open("data/users.json", "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
 
-            return "Initialised. Please, write /settings and configure your data. Program basicly will think that you are in London"
+            return "Initialised. Please, write /profile_settings and configure your data. "
         else:
             return "already in"   
     except:
@@ -159,6 +160,7 @@ async def profile_settings_menu(message: Message):
 async def edit_class_start(callback: CallbackQuery,state: FSMContext):
     await callback.message.edit_text(f"Введите свой класс в формате\nКЛАСС.ПАРАЛЛЕЛЬ.\nНапример 9.3")
     await state.set_state(NameSettingsStates.waiting_for_class)
+    await callback.answer()
 
 @router.callback_query(F.data == "edit_name")
 async def edit_name_start(callback: CallbackQuery, state: FSMContext):
@@ -188,7 +190,7 @@ async def save_name(message: Message, state: FSMContext):
         await message.answer("Имя обновлено!")
     except Exception as e:
         await message.answer("Ошибка при сохранении имени.")
-        print(f"Ошибка сохранения имени: {e}")
+        print(f"Ошибка сохранения имени: {e}")  
 
     await state.clear()
     await profile_settings_menu(message)
@@ -239,6 +241,7 @@ async def save_class(message: Message, state: FSMContext):
                 with open(f"user_data/{user_id}/preferences", "w", encoding="utf-8") as f:
                     json.dump(prefs, f, ensure_ascii=False, indent=2)
                 await message.answer("Класс обновлен")
+                await state.clear()
 
     except Exception as e:
         await message.answer("Ошибка при сохранении класса.")
@@ -254,19 +257,150 @@ async def close_profile_menu(callback: CallbackQuery):
 def get_id():
     return uuid.uuid4().hex  
 
+class NewGameStates(StatesGroup):
+    wait_for_wantings=State()
+
 @router.message(Command("new_game"))
-async def new_game(message:Message):
+async def new_game(message:Message,state: FSMContext):
     user_id=message.from_user.id
     temp=get_id()
     while(os.path.exists(f"game_data/{temp}")):
         temp=get_id()
-    os.makedirs(f"game_data/{temp}")
+    os.makedirs(f"game_data/{temp}",exist_ok=True)
     with open(f"game_data/{temp}/gamers","w",encoding="utf-8") as f:
-        json.dump([user_id],f)
+        json.dump([user_id],f,ensure_ascii=False, indent=2)
     with open(f"game_data/{temp}/admin","w",encoding="utf-8") as f:   
-        json.dump([user_id],f)
+        json.dump([user_id],f, ensure_ascii=False, indent=2)
+    games_list = []
+    with open(f"user_data/{user_id}/santas","r",encoding="utf-8") as f:
+        games_list=json.load(f);
+    if not (temp in games_list):
+        games_list.append(temp)
+    with open(f"user_data/{user_id}/santas","w",encoding="utf-8") as f:
+        json.dump(games_list,f)
     await message.answer(f"Вами была создана новая игра. Ее id:\n<b>{temp}</b>\nИспользуйте данный id чтобы пригласить в игру друзей",parse_mode="HTML")
+    await message.answer("Теперь введите ваши хотелки")
+    await state.update_data(game_id=temp)
+    await state.set_state(NewGameStates.wait_for_wantings)
 
+
+@router.message(NewGameStates.wait_for_wantings)
+async def save_wantings(message:Message,state: FSMContext):
+    id=message.from_user.id
+    data = await state.get_data()
+    gid = data["game_id"]
+    msg=message.text.strip()
+    temp = []
+    temp.append(msg)
+    with open(f"game_data/{gid}/{id}","w",encoding="utf-8") as f:
+        json.dump(temp,f, ensure_ascii=False, indent=2)
+    await message.answer("Добавлено. Вы сможете изменить позже")
+    await state.clear()
+
+class GameJoinStates(StatesGroup):
+    wait_for_id = State()
+    wait_for_wantings=State()
+
+@router.message(Command("join_game"))
+async def join_game(message:Message, state: FSMContext):
+    await message.answer(f"Для того чтобы присоедениться к игре, пожалуйста введите id полученный от друга")
+    await state.set_state(GameJoinStates.wait_for_id)
+
+@router.message(GameJoinStates.wait_for_id)
+async def savegame(message:Message,state: FSMContext):
+    id=message.from_user.id
+    game_id=message.text.strip()
+    if(os.path.exists(f"game_data/{game_id}")):
+        temp=[]
+        await state.update_data(game_id=game_id)
+        with open(f"game_data/{game_id}/gamers","r",encoding="utf-8") as f:
+            temp=json.load(f)
+        if id not in temp:      
+            temp.append(id)
+        with open(f"game_data/{game_id}/gamers","w",encoding="utf-8") as f:
+            json.dump(temp,f, ensure_ascii=False, indent=2)
+        with open(f"user_data/{id}/santas","r",encoding="utf-8") as f:
+            games_list=json.load(f);
+        if not (game_id in games_list):
+            games_list.append(game_id)
+        with open(f"user_data/{id}/santas","w",encoding="utf-8") as f:
+            json.dump(games_list,f)
+        await message.answer(f"Вы успешно подключились к игре. Теперь введите пожалуйста ваши хотелки")
+        await state.set_state(GameJoinStates.wait_for_wantings)
+    else:
+        await message.answer(f"Такой игры нет. Перепроверьте")
+        await state.clear()
+        return
+        
+@router.message(GameJoinStates.wait_for_wantings)
+async def save_wantings(message:Message,state: FSMContext):
+    id=message.from_user.id
+    data = await state.get_data()
+    gid = data["game_id"]
+    msg=message.text.strip()
+    temp = []
+    temp.append(msg)
+    with open(f"game_data/{gid}/{id}","w",encoding="utf-8") as f:
+        json.dump(temp,f, ensure_ascii=False, indent=2)
+    await message.answer("Добавлено. Вы сможете изменить позже")
+    await state.clear()
+
+
+@router.message(Command("select_game"))
+async def cmd_select_game(message: types.Message):
+    user_id = str(message.from_user.id)
+    santas_path = f"user_data/{user_id}/santas"
+
+    
+    try:
+        with open(santas_path, encoding="utf-8") as f:
+            games = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        await message.answer("Ошибка чтения списка игр.")
+        return
+
+    if not games:
+        await message.answer("Список игр пуст.")
+        return
+
+    # Ограничим количество кнопок, если их слишком много (по аналогии с пагинацией задач)
+    # Но для простоты оставим как есть — при необходимости можно добавить пагинацию
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=f"Игра {gid}", callback_data=f"sg:{gid}")]
+            for gid in games
+        ]
+    )
+    await message.answer("Выберите игру:", reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("sg:"))
+async def set_select_game(callback: types.CallbackQuery):
+    user_id = str(callback.from_user.id)
+    try:
+        gid = callback.data.split(":", 1)[1]
+    except IndexError:
+        await callback.answer("Некорректные данные.", show_alert=True)
+        return
+
+    prefs_path = f"user_data/{user_id}/preferences"
+
+    
+    with open(prefs_path, encoding="utf-8") as f:
+                prefs = json.load(f)
+
+    # Сохраняем выбранный ID игры
+    prefs["select_game"] = gid
+
+    try:
+        with open(prefs_path, "w", encoding="utf-8") as f:
+            json.dump(prefs, f, ensure_ascii=False, indent=2)
+    except OSError:
+        await callback.answer("Ошибка сохранения выбора.", show_alert=True)
+        return
+
+    await callback.answer(f"Выбрана игра {gid}")
+    await callback.message.delete()
 
 
 async def main():
